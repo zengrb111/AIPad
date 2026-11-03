@@ -27,7 +27,8 @@ const H = {
 }
 
 function git(args) {
-  const r = spawnSync('git', args, { stdio: ['ignore', 'pipe', 'pipe'] })
+  // maxBuffer 默认只有 1MB，图片 blob 会超，超了 stderr 还是空的，很难查
+  const r = spawnSync('git', args, { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 })
   if (r.status !== 0) {
     throw new Error(`git ${args.join(' ')} 失败: ${r.stderr?.toString().slice(0, 300)}`)
   }
@@ -56,15 +57,31 @@ const main = async () => {
   console.log('远程 HEAD:', remoteSha.slice(0, 7))
 
   // 2. 本地相对远程改了什么
-  const diff = git(['diff', '--name-status', remoteSha, 'HEAD']).toString().trim()
-  if (!diff) {
-    console.log('没有差异，不需要推送')
-    return
+  let changes
+  try {
+    const diff = git(['diff', '--name-status', remoteSha, 'HEAD']).toString().trim()
+    if (!diff) {
+      console.log('没有差异，不需要推送')
+      return
+    }
+    changes = diff.split('\n').map((line) => {
+      const [status, ...rest] = line.split('\t')
+      return { status: status[0], path: rest.join('\t') }
+    })
+  } catch {
+    // 本地没 fetch 过远程提交（443 被墙时很常见），退回全量上传：
+    // base_tree 用远程的，逐个覆盖本地所有文件。删除的文件这次不会同步。
+    console.log('本地没有远程提交对象，改为全量上传')
+    changes = git(['-c', 'core.quotepath=false', 'ls-tree', '-r', 'HEAD'])
+      .toString()
+      .trim()
+      .split('\n')
+      .map((line) => {
+        const m = line.match(/^(\d+)\s+\w+\s+([0-9a-f]+)\t(.+)$/)
+        return m ? { status: 'M', path: m[3], mode: m[1], sha: m[2] } : null
+      })
+      .filter(Boolean)
   }
-  const changes = diff.split('\n').map((line) => {
-    const [status, ...rest] = line.split('\t')
-    return { status: status[0], path: rest.join('\t') }
-  })
   console.log('变更文件:')
   changes.forEach((c) => console.log(` ${c.status} ${c.path}`))
 
@@ -77,8 +94,11 @@ const main = async () => {
     }
     // 内容从 git 对象读，mode 也从 ls-tree 拿
     const content = git(['cat-file', 'blob', `HEAD:${c.path}`])
-    const ls = git(['ls-tree', 'HEAD', '--', c.path]).toString().trim().split(/\s+/)
-    const mode = ls[0] || '100644'
+    let mode = c.mode
+    if (!mode) {
+      const ls = git(['ls-tree', 'HEAD', '--', c.path]).toString().trim().split(/\s+/)
+      mode = ls[0] || '100644'
+    }
 
     const blob = await api(`/repos/${OWNER}/${REPO}/git/blobs`, {
       method: 'POST',

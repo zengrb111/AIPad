@@ -8,7 +8,7 @@ import path from 'node:path'
 const TOKEN = process.env.GITHUB_TOKEN
 const OWNER = 'zengrb111'
 const REPO = 'AIPad'
-const TAG = 'v1.2'
+const TAG = 'v1.3'
 
 if (!TOKEN) {
   console.error('缺少 GITHUB_TOKEN')
@@ -27,8 +27,8 @@ const BODY = `## 两个包，看名字分：tablet = 平板，phone = 手机
 
 | 文件 | 装在哪 | 图标 | 包名 |
 |---|---|---|---|
-| aiframe-**tablet**-v1.2.apk | **平板 / 相框屏** | 深褐底 | cafe.aimemory.frame |
-| aiframe-**phone**-v1.2.apk | **子女的手机** | 赭红底 | cafe.aimemory.family |
+| aiframe-**tablet**-v1.3.apk | **平板 / 相框屏** | 深褐底 | cafe.aimemory.frame |
+| aiframe-**phone**-v1.3.apk | **子女的手机** | 赭红底 | cafe.aimemory.family |
 
 包名不同，可以同时装在一台机器上。
 
@@ -36,6 +36,7 @@ const BODY = `## 两个包，看名字分：tablet = 平板，phone = 手机
 
 - 相框端：横屏全屏（**状态栏也隐藏**）、18 秒自动轮播、**左右滑动翻页**、点屏说话、AI 解说带字幕
 - 相框端：照片**先完整显示，再缓缓推近到铺满屏幕**，然后切下一张
+- 相框端：去掉顶上那条白带（系统状态栏留白），真正全屏
 - 解说**在服务端生成一次，实时推送到相框**；相框只播这份 mp3，不会自己再识别或合成
 - 相框端：视频浮在当前画面上播放（不跳页），播放中也能滑动切走
 - 相框端：右上角气泡点开看这张照片的讲解和家人留言
@@ -73,7 +74,7 @@ const main = async () => {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       tag_name: TAG,
-      name: '相框 v1.2（内测）',
+      name: '相框 v1.3（内测）',
       body: BODY,
       draft: false,
       prerelease: true,
@@ -82,8 +83,8 @@ const main = async () => {
   console.log('release id:', rel.id)
 
   const files = [
-    { local: 'release/相框-平板-v1.2.apk', name: 'aiframe-tablet-v1.2.apk' },
-    { local: 'release/子女端-手机-v1.2.apk', name: 'aiframe-phone-v1.2.apk' },
+    { local: 'release/相框-平板-v1.3.apk', name: 'aiframe-tablet-v1.3.apk' },
+    { local: 'release/子女端-手机-v1.3.apk', name: 'aiframe-phone-v1.3.apk' },
   ]
 
   for (const f of files) {

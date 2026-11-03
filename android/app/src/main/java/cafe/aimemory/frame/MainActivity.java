@@ -8,6 +8,7 @@ import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import androidx.core.view.ViewCompat;
 import com.getcapacitor.BridgeActivity;
 
 /**
@@ -30,6 +31,21 @@ public class MainActivity extends BridgeActivity {
         // 相框挂在墙上，不能黑屏
         if (isFrame()) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            // 让内容铺到状态栏/导航栏底下。只 hide() 不收边的话，
+            // 系统仍然会给状态栏留一条白边——就是平板上那条白带。
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                getWindow().setDecorFitsSystemWindows(false);
+            }
+            getWindow().setStatusBarColor(android.graphics.Color.TRANSPARENT);
+            getWindow().setNavigationBarColor(android.graphics.Color.TRANSPARENT);
+
+            // Capacitor 的 SystemBars 默认会按系统栏高度给 decorView 加 padding。
+            // 状态栏隐藏后那一条空白还在，窗口底色是白的——就是平板上那条白带。
+            // 直接顶掉它的监听器，不接收任何 inset padding（只对相框包生效）。
+            ViewCompat.setOnApplyWindowInsetsListener(
+                    getWindow().getDecorView(),
+                    (v, insets) -> insets);
+
             applyImmersive();
         }
 
@@ -41,6 +57,10 @@ public class MainActivity extends BridgeActivity {
             s.setJavaScriptEnabled(true);
             // 走 https 的服务器时不让 WebView 拦下来
             s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+            if (isFrame()) {
+                // WebView 自己的底也刷深色，页面加载前闪一下也不会是白的
+                webView.setBackgroundColor(0xFF16120F);
+            }
         }
     }
 
