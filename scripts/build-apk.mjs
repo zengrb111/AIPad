@@ -84,15 +84,42 @@ for (const role of ['frame', 'family']) {
     cwd: path.join(ROOT, 'android'),
     env,
   })
+
+  // 编译完立刻核对：包里装的网页必须是刚构建的这一端。
+  // 两个 flavor 共用 assets 目录，只跑 gradle 不重新 copy 就会串包，
+  // 表现是"相框打开是白屏"（其实装的是子女端页面）。
+  const distAssets = path.join(ROOT, 'dist', 'assets')
+  const builtJs = fs.readdirSync(distAssets).find((f) => /^index-.*\.js$/.test(f))
+  const apkPath = path.join(
+    ROOT,
+    'android',
+    'app',
+    'build',
+    'outputs',
+    'apk',
+    role,
+    'release',
+    `app-${role}-release.apk`
+  )
+  // 直接用 node 调，不走 shell（路径里有空格时 shell 会拆错）
+  console.log(`\n> 校验${label}包里的页面`)
+  const vr = spawnSync(process.execPath, ['scripts/verify-apk.mjs', apkPath, path.join(distAssets, builtJs)], {
+    cwd: ROOT,
+    stdio: 'inherit',
+  })
+  if (vr.status !== 0) {
+    console.error(`\n${label}包里的页面不对，已中止。不要把这个包发出去。`)
+    process.exit(1)
+  }
 }
 
 const OUTPUTS = [
   {
-    dest: '相框-平板-v1.3.apk',
+    dest: '相框-平板-v1.4.apk',
     src: path.join('android', 'app', 'build', 'outputs', 'apk', 'frame', 'release', 'app-frame-release.apk'),
   },
   {
-    dest: '子女端-手机-v1.3.apk',
+    dest: '子女端-手机-v1.4.apk',
     src: path.join('android', 'app', 'build', 'outputs', 'apk', 'family', 'release', 'app-family-release.apk'),
   },
 ]
