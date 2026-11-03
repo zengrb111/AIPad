@@ -66,20 +66,16 @@ if (fs.existsSync(sdk)) {
   process.exit(1)
 }
 
-console.log('\n[1/3] 构建网页产物')
-run('npm', ['run', 'build'], { env })
-
 const gradlew = process.platform === 'win32' ? 'gradlew.bat' : './gradlew'
-const distDir = path.join(ROOT, 'dist')
 
-// 两个包必须分别打包：写角色标记 → 同步资源 → 编译。
-// 不能一次编两个 flavor，因为 assets 目录是共用的，
-// 最后写进去的角色会被两个包共用。
-console.log('\n[2/3] 写入角色标记并同步资源')
+// 每个角色单独构建一次：APP_ROLE 会被 vite define 写死进 JS。
+// 这样包里自带身份，不依赖运行时读文件或读包名——那两条路都踩过坑。
 for (const role of ['frame', 'family']) {
   const label = role === 'frame' ? '相框端' : '子女端'
 
-  fs.writeFileSync(path.join(distDir, 'role.json'), JSON.stringify({ role }), 'utf8')
+  console.log(`\n[2/3] 构建${label}网页产物（APP_ROLE=${role}）`)
+  run('npm', ['run', 'build'], { env: { ...env, APP_ROLE: role } })
+
   run('npx', ['cap', 'copy', 'android'], { env })
 
   console.log(`\n[3/3] 编译${label}`)

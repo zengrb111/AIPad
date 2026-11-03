@@ -6,28 +6,25 @@ import { isNativeApp } from './lib/server'
 
 type Role = 'frame' | 'family'
 
+// 打包时由 vite.config 注入（APP_ROLE 环境变量）
+declare const __APP_ROLE__: string
+
 /**
- * 判断当前该显示哪一端。
+ * 判断该显示哪一端。
  *
  * 浏览器：看路径（/frame 或 /family）。
- * App：路径永远是 '/'，所以读构建时写进去的 /role.json。
- *      不能用 Capacitor 的 appId 判断——那是 capacitor.config 里的静态值，
- *      两个 flavor 打出来一模一样，判断不出区别。
+ * App：路径永远是 '/'，所以用打包时写死进来的 __APP_ROLE__。
+ *
+ * 为什么不用读文件/读包名：
+ *   - 读 capacitor.config 的 appId 不可行（两个 flavor 共用一份配置）
+ *   - 运行时 fetch 角色文件在 WebView 里不一定拿得到
+ *   - 编译期常量没有失败的可能
  */
-async function detectRole(): Promise<Role> {
+function detectRole(): Role {
   const p = location.pathname.replace(/\/+$/, '')
   if (p === '/frame') return 'frame'
   if (p === '/family') return 'family'
-
-  try {
-    const r = await fetch('/role.json', { cache: 'no-store' })
-    if (r.ok) {
-      const j = await r.json()
-      if (j?.role === 'frame' || j?.role === 'family') return j.role
-    }
-  } catch {
-    /* 拿不到就按子女端 */
-  }
+  if (__APP_ROLE__ === 'frame' || __APP_ROLE__ === 'family') return __APP_ROLE__
   return 'family'
 }
 
@@ -35,10 +32,9 @@ async function detectRole(): Promise<Role> {
  * 一份代码，两个 App：
  *   frame  → 装在相框平板上，横屏全屏，左右滑动翻页
  *   family → 装在子女手机上，传照片、听留言
- * 两个包 applicationId 不同，可以同时装在一台机器上。
  */
 export default function App() {
-  const [role, setRole] = useState<Role | null>(null)
+  const [role] = useState<Role>(() => detectRole())
   const [needSetup, setNeedSetup] = useState(() => {
     if (!isNativeApp()) return false
     try {
@@ -50,16 +46,6 @@ export default function App() {
     return false
   })
 
-  useEffect(() => {
-    let alive = true
-    detectRole().then((r) => {
-      if (alive) setRole(r)
-    })
-    return () => {
-      alive = false
-    }
-  }, [])
-
   // 地址栏颜色：相框深色，子女端浅色
   useEffect(() => {
     const meta = document.querySelector('meta[name="theme-color"]')
@@ -67,7 +53,6 @@ export default function App() {
     document.title = role === 'frame' ? '相框' : '爸妈的相框'
   }, [role])
 
-  if (role === null) return <div className="loading">正在启动…</div>
   if (needSetup) return <ServerSetup onDone={() => setNeedSetup(false)} />
   if (role === 'frame') return <FrameApp />
   return <FamilyApp />
