@@ -55,11 +55,15 @@ android {
             dimension "role"
             applicationId "cafe.aimemory.frame"
             resValue "string", "app_name", "相框"
+            // 相框挂在平板/墙上：横屏
+            manifestPlaceholders = [screenOrientation: "sensorLandscape"]
         }
         family {
             dimension "role"
             applicationId "cafe.aimemory.family"
             resValue "string", "app_name", "爸妈的相框"
+            // 子女用手机：竖屏，跟着系统转
+            manifestPlaceholders = [screenOrientation: "portrait"]
         }
     }
 }

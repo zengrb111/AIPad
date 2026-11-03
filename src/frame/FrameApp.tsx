@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, url, fmtClock, type Narration, type Photo } from '../lib/api'
+import { api, url, fmtClock, fmtDur, type Comment, type Narration, type Photo } from '../lib/api'
 import { isNativeApp } from '../lib/server'
 import { useRecorder } from '../lib/recorder'
 
@@ -26,6 +26,7 @@ export default function FrameApp() {
   const [playingVideo, setPlayingVideo] = useState<string | null>(null)
   const [cue, setCue] = useState('')
   const [slideKey, setSlideKey] = useState(0)
+  const [panelOpen, setPanelOpen] = useState(false)
 
   const rec = useRecorder()
   const idxRef = useRef(0)
@@ -42,7 +43,7 @@ export default function FrameApp() {
 
   photosRef.current = photos
   recOpenRef.current = recOpen
-  busyRef.current = Boolean(playingId || narratingId || playingVideo)
+  busyRef.current = Boolean(playingId || narratingId || playingVideo || panelOpen)
 
   /* ---------- 数据 ---------- */
 
@@ -165,8 +166,26 @@ export default function FrameApp() {
     [refresh, stopAll]
   )
 
-  /* ---------- AI 解说 ---------- */
+  /** 面板里点某条留言播放 */
+  const playComment = useCallback(
+    (c: Comment) => {
+      stopAll()
+      const a = new Audio(url(c.audio))
+      audioRef.current = a
+      setPlayingId(c.id)
+      const done = () => {
+        setPlayingId(null)
+        if (!c.heard) api.markHeard(c.id).catch(() => {})
+        refresh()
+      }
+      a.onended = done
+      a.onerror = done
+      a.play().catch(done)
+    },
+    [refresh, stopAll]
+  )
 
+  /* ---------- AI 解说 ---------- */
   const speakNarration = useCallback((photo: Photo, n: Narration) => {
     if (!n.text) return
     window.clearTimeout(subtitleTimer.current)
@@ -315,12 +334,19 @@ export default function FrameApp() {
   const cur = photos[displayed]
   const prev = incoming !== null ? photos[incoming] : null
   const speaking = Boolean(narratingId) && Boolean(subtitle)
+  // 子女留言里爸妈还没听过的
+  const unheard = (cur?.comments || []).filter((c) => c.from === 'child' && !c.heard).length
 
   // 视频播的是它自己，点一下就播；照片点一下是"说话"
   const onFrameClick = () => {
     // 刚滑完不算点击，否则滑一下就进录音了
     if (swipedRef.current) {
       swipedRef.current = false
+      return
+    }
+    // 面板开着时，点画面任意处先收起面板
+    if (panelOpen) {
+      setPanelOpen(false)
       return
     }
     if (sending || recOpen) return
@@ -345,7 +371,7 @@ export default function FrameApp() {
   const onPointerUp = (e: React.PointerEvent) => {
     const s = pointerStart.current
     pointerStart.current = null
-    if (!s || recOpen) return
+    if (!s || recOpen || panelOpen) return
     const dx = e.clientX - s.x
     const dy = e.clientY - s.y
     // 横向位移要明显大于纵向，避免把上下滑当成翻页
@@ -401,26 +427,35 @@ export default function FrameApp() {
           )}
 
           {playingVideo && (
-            <video
-              className="frame-video"
-              src={url(cur.file)}
-              autoPlay
-              playsInline
-              onTimeUpdate={(e) => {
-                const t = e.currentTarget.currentTime
-                const c = cur.transcript?.chunks?.find((x) => t >= x.start && t <= x.end)
-                setCue(c?.text || '')
-              }}
-              onEnded={() => {
-                setPlayingVideo(null)
-                setCue('')
-              }}
+            <div
+              className="frame-video-wrap"
               onClick={(e) => {
                 e.stopPropagation()
                 setPlayingVideo(null)
                 setCue('')
               }}
-            />
+            >
+              <video
+                className="frame-video"
+                src={url(cur.file)}
+                autoPlay
+                playsInline
+                onTimeUpdate={(e) => {
+                  const t = e.currentTarget.currentTime
+                  const c = cur.transcript?.chunks?.find((x) => t >= x.start && t <= x.end)
+                  setCue(c?.text || '')
+                }}
+                onEnded={() => {
+                  setPlayingVideo(null)
+                  setCue('')
+                }}
+                onError={() => {
+                  // 播放失败也要退出，否则这一层会一直挡着，后面就滑不动了
+                  setPlayingVideo(null)
+                  setCue('')
+                }}
+              />
+            </div>
           )}
 
           {playingVideo && cue && <div className="video-cue">{cue}</div>}
@@ -432,8 +467,8 @@ export default function FrameApp() {
       <div
         style={{
           position: 'absolute',
-          top: 26,
-          right: 32,
+          top: 28,
+          left: 34,
           color: 'rgba(255,255,255,.62)',
           fontSize: 20,
           fontVariantNumeric: 'tabular-nums',
@@ -444,10 +479,96 @@ export default function FrameApp() {
         {now.getHours().toString().padStart(2, '0')}:{now.getMinutes().toString().padStart(2, '0')}
       </div>
 
-      {photos.length > 0 && !playingVideo && (
+      {/* 右上角气泡：点开看这张照片的讲解和家人留言 */}
+      {photos.length > 0 && !recOpen && !playingVideo && (
+        <button
+          className={`frame-bubble ${panelOpen ? 'on' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (panelOpen) {
+              setPanelOpen(false)
+            } else {
+              stopAll()
+              setPanelOpen(true)
+            }
+          }}
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 3C6.9 3 2.8 6.4 2.8 10.6c0 2.4 1.4 4.5 3.5 5.9-.2 1.3-.8 2.5-1.6 3.5-.2.3.1.6.4.5 1.8-.4 3.4-1.2 4.6-2.1.9.2 1.9.3 2.9.3 5.1 0 9.2-3.4 9.2-7.6S17.1 3 12 3Z" />
+          </svg>
+          {unheard > 0 && <span className="bubble-dot" />}
+        </button>
+      )}
+
+      {/* 右侧信息面板 */}
+      {panelOpen && cur && (
+        <div className="frame-panel" onClick={(e) => e.stopPropagation()}>
+          <button className="panel-close" onClick={() => setPanelOpen(false)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+            </svg>
+          </button>
+
+          <div className="panel-title">{cur.caption || '这张照片'}</div>
+          <div className="panel-by">
+            {cur.from}
+            <span className="dot" />
+            {new Date(cur.createdAt).toLocaleDateString('zh-CN', {
+              month: 'long',
+              day: 'numeric',
+            })}
+          </div>
+
+          {cur.narration?.text && (
+            <div className="panel-section">
+              <div className="panel-label">它讲到</div>
+              <div className="panel-text">{cur.narration.text}</div>
+            </div>
+          )}
+
+          {!!cur.comments?.length && (
+            <div className="panel-section">
+              <div className="panel-label">家人留言</div>
+              {cur.comments.map((c) => (
+                <div
+                  key={c.id}
+                  className={`panel-voice ${playingId === c.id ? 'on' : ''} ${
+                    c.from === 'child' && !c.heard ? 'unheard' : ''
+                  }`}
+                  onClick={() => playComment(c)}
+                >
+                  <span className="panel-play">
+                    {playingId === c.id ? (
+                      <svg viewBox="0 0 24 24" fill="currentColor">
+                        <rect x="7" y="5" width="3.5" height="14" rx="1" />
+                        <rect x="13.5" y="5" width="3.5" height="14" rx="1" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    )}
+                  </span>
+                  <span className="panel-voice-mid">
+                    <b>{c.from === 'parent' ? '爸妈' : '家人'}</b>
+                    <em>{fmtDur(c.duration)}</em>
+                  </span>
+                  {c.from === 'child' && !c.heard && <span className="panel-new">新</span>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!cur.narration?.text && !cur.comments?.length && (
+            <div className="panel-empty">这张还没有讲解，也没有留言</div>
+          )}
+        </div>
+      )}
+
+      {photos.length > 0 && (
         <div className="frame-meta">
           <div>
-            {speaking ? (
+            {playingVideo ? null : speaking ? (
               <div className="frame-caption speaking">{subtitle}</div>
             ) : (
               <>
