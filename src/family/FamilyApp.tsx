@@ -486,18 +486,20 @@ export default function FamilyApp() {
       </div>
 
       <div className="fam-body">
-        <div className="uploader" onClick={() => inputRef.current?.click()}>
+        {/* 用 label 包住 input：点击是浏览器原生行为，
+            在安卓 WebView 里也一定生效（程序触发 display:none 的 input 可能被拦） */}
+        <label className="uploader">
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*,video/*"
+            className="uploader-file"
+            onChange={pickFile}
+          />
           <div className="plus">+</div>
           <strong>传一张照片或一段视频</strong>
           <span>传上去几秒后，相框就会开始播放</span>
-        </div>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*,video/*"
-          style={{ display: 'none' }}
-          onChange={pickFile}
-        />
+        </label>
 
         {photos.length === 0 && (
           <div className="empty">

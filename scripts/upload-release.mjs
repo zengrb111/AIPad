@@ -23,12 +23,12 @@ const H = {
   'user-agent': 'aiframe-release',
 }
 
-const BODY = `## 两个包，别装错
+const BODY = `## 两个包，看名字分：tablet = 平板，phone = 手机
 
 | 文件 | 装在哪 | 图标 | 包名 |
 |---|---|---|---|
-| aiframe-frame-v1.1.apk | 平板 / 相框屏 | 深褐底 | cafe.aimemory.frame |
-| aiframe-family-v1.1.apk | 子女的手机 | 赭红底 | cafe.aimemory.family |
+| aiframe-**tablet**-v1.1.apk | **平板 / 相框屏** | 深褐底 | cafe.aimemory.frame |
+| aiframe-**phone**-v1.1.apk | **子女的手机** | 赭红底 | cafe.aimemory.family |
 
 包名不同，可以同时装在一台机器上。
 
@@ -80,8 +80,8 @@ const main = async () => {
   console.log('release id:', rel.id)
 
   const files = [
-    { local: 'release/相框-v1.1.apk', name: 'aiframe-frame-v1.1.apk' },
-    { local: 'release/爸妈的相框-v1.1.apk', name: 'aiframe-family-v1.1.apk' },
+    { local: 'release/相框-平板-v1.1.apk', name: 'aiframe-tablet-v1.1.apk' },
+    { local: 'release/子女端-手机-v1.1.apk', name: 'aiframe-phone-v1.1.apk' },
   ]
 
   for (const f of files) {

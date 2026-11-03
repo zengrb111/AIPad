@@ -92,11 +92,11 @@ for (const role of ['frame', 'family']) {
 
 const OUTPUTS = [
   {
-    dest: '相框-v1.1.apk',
+    dest: '相框-平板-v1.1.apk',
     src: path.join('android', 'app', 'build', 'outputs', 'apk', 'frame', 'release', 'app-frame-release.apk'),
   },
   {
-    dest: '爸妈的相框-v1.1.apk',
+    dest: '子女端-手机-v1.1.apk',
     src: path.join('android', 'app', 'build', 'outputs', 'apk', 'family', 'release', 'app-family-release.apk'),
   },
 ]
@@ -120,7 +120,7 @@ for (const o of OUTPUTS) {
 
 if (ok === OUTPUTS.length) {
   console.log(`\n完成，产物在 ${releaseDir}`)
-  console.log('「相框」装到平板，「爸妈的相框」装到子女手机。两个包名不同，可以装在同一台机器上。')
+  console.log('「相框-平板」装平板，「子女端-手机」装手机。两个包名不同，可以装在同一台机器上。')
 } else {
   console.error('\n有包没生成出来，检查上面的日志。')
   process.exit(1)
