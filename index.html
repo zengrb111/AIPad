@@ -19,9 +19,82 @@
     <meta name="format-detection" content="telephone=no" />
 
     <title>相框</title>
+
+    <style>
+      /* 启动兜底：JS 没跑起来时屏幕上也有东西，不会再是一片白 */
+      #boot {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: #16120f;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        font: 15px/1.7 -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+        letter-spacing: 0.04em;
+      }
+      #boot .b-title {
+        color: rgba(240, 228, 214, 0.62);
+      }
+      #boot .b-ver {
+        font-size: 11px;
+        color: rgba(240, 228, 214, 0.26);
+        letter-spacing: 0.1em;
+      }
+      #boot-err {
+        display: none;
+        max-width: 82vw;
+        margin-top: 18px;
+        padding: 12px 16px;
+        border-radius: 10px;
+        background: rgba(150, 40, 30, 0.28);
+        border: 1px solid rgba(220, 90, 70, 0.45);
+        color: #ffd7cf;
+        font-size: 12px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+
+    <div id="boot">
+      <div class="b-title">正在启动…</div>
+      <div class="b-ver">v1.5</div>
+      <div id="boot-err"></div>
+    </div>
+
+    <script>
+      // 出错时把原因显示出来，别再让人对着一片白猜
+      ;(function () {
+        var box = document.getElementById('boot-err')
+        var shown = false
+        function show(msg) {
+          if (!box || shown) return
+          shown = true
+          box.style.display = 'block'
+          box.textContent = '启动出错：' + msg
+        }
+        window.addEventListener('error', function (e) {
+          if (e.target && e.target !== window) return
+          show((e.message || 'unknown') + (e.filename ? '\n' + e.filename + ':' + e.lineno : ''))
+        })
+        window.addEventListener('unhandledrejection', function (e) {
+          show((e.reason && (e.reason.message || e.reason)) || 'promise rejected')
+        })
+        // 8 秒还没挂载，说明卡住了，把状态亮出来
+        setTimeout(function () {
+          if (!document.getElementById('boot')) return
+          var t = document.querySelector('#boot .b-title')
+          if (t) t.textContent = '启动超时，正在等页面响应…'
+        }, 8000)
+      })()
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

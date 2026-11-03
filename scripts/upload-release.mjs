@@ -8,7 +8,7 @@ import path from 'node:path'
 const TOKEN = process.env.GITHUB_TOKEN
 const OWNER = 'zengrb111'
 const REPO = 'AIPad'
-const TAG = 'v1.4'
+const TAG = 'v1.5'
 
 if (!TOKEN) {
   console.error('缺少 GITHUB_TOKEN')
@@ -27,8 +27,8 @@ const BODY = `## 两个包，看名字分：tablet = 平板，phone = 手机
 
 | 文件 | 装在哪 | 图标 | 包名 |
 |---|---|---|---|
-| aiframe-**tablet**-v1.4.apk | **平板 / 相框屏** | 深褐底 | cafe.aimemory.frame |
-| aiframe-**phone**-v1.4.apk | **子女的手机** | 赭红底 | cafe.aimemory.family |
+| aiframe-**tablet**-v1.5.apk | **平板 / 相框屏** | 深褐底 | cafe.aimemory.frame |
+| aiframe-**phone**-v1.5.apk | **子女的手机** | 赭红底 | cafe.aimemory.family |
 
 包名不同，可以同时装在一台机器上。
 
@@ -74,7 +74,7 @@ const main = async () => {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       tag_name: TAG,
-      name: '相框 v1.4（内测）',
+      name: '相框 v1.5（内测）',
       body: BODY,
       draft: false,
       prerelease: true,
@@ -83,8 +83,8 @@ const main = async () => {
   console.log('release id:', rel.id)
 
   const files = [
-    { local: 'release/相框-平板-v1.4.apk', name: 'aiframe-tablet-v1.4.apk' },
-    { local: 'release/子女端-手机-v1.4.apk', name: 'aiframe-phone-v1.4.apk' },
+    { local: 'release/相框-平板-v1.5.apk', name: 'aiframe-tablet-v1.5.apk' },
+    { local: 'release/子女端-手机-v1.5.apk', name: 'aiframe-phone-v1.5.apk' },
   ]
 
   for (const f of files) {

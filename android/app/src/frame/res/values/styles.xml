@@ -3,9 +3,9 @@
     <!--
       相框端专用主题（family 源集里没有这个文件，不受影响）。
 
-      顶部那条白带就是这里来的：默认主题是 DayNight 的浅色窗口，
-      状态栏区域被系统留出来、刷成白色。把窗口底色和两个系统栏都改成
-      透明/深色，配合 MainActivity 的 edge-to-edge，白带才会真的消失。
+      顶部那条白带是"窗口底色是浅色"造成的：状态栏即使收起来了，
+      系统留给它的那一条也会被刷成窗口底色。
+      这里把窗口底色刷深，就算还剩一条，看上去也是黑的。
     -->
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.NoActionBar">
         <item name="windowActionBar">false</item>
@@ -21,8 +21,5 @@
         <item name="android:windowLightNavigationBar">false</item>
 
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
-
-        <!-- 老系统上再兜一层，彻底不留状态栏空间 -->
-        <item name="android:windowFullscreen">true</item>
     </style>
 </resources>

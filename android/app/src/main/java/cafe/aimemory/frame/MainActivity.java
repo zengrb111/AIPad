@@ -8,14 +8,17 @@ import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
-import androidx.core.view.ViewCompat;
 import com.getcapacitor.BridgeActivity;
 
 /**
  * 相框 App 的原生外壳。只做三件 Web 端做不到的事：
  *   1. 屏幕永不息屏
- *   2. 真全屏：状态栏（时间/电量/WiFi）和导航栏都收起来
+ *   2. 状态栏 / 导航栏收起来
  *   3. 允许页面自动出声（否则浏览器策略会拦住，相框就哑了）
+ *
+ * 这里不要再碰 decorView 的 padding，也不要 setDecorFitsSystemWindows——
+ * 之前为去掉顶部留白改过一轮，把页面搞成白屏了。
+ * 留白现在靠主题的深色窗口底色兜住：就算还剩一条，也是黑的，看不出来。
  */
 public class MainActivity extends BridgeActivity {
 
@@ -28,24 +31,11 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // 相框挂在墙上，不能黑屏
         if (isFrame()) {
+            // 相框挂在墙上，不能黑屏
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            // 让内容铺到状态栏/导航栏底下。只 hide() 不收边的话，
-            // 系统仍然会给状态栏留一条白边——就是平板上那条白带。
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                getWindow().setDecorFitsSystemWindows(false);
-            }
             getWindow().setStatusBarColor(android.graphics.Color.TRANSPARENT);
             getWindow().setNavigationBarColor(android.graphics.Color.TRANSPARENT);
-
-            // Capacitor 的 SystemBars 默认会按系统栏高度给 decorView 加 padding。
-            // 状态栏隐藏后那一条空白还在，窗口底色是白的——就是平板上那条白带。
-            // 光换监听器不够：它已经加过一次 padding，必须显式清零。
-            View decor = getWindow().getDecorView();
-            ViewCompat.setOnApplyWindowInsetsListener(decor, (v, insets) -> insets);
-            decor.setPadding(0, 0, 0, 0);
-
             applyImmersive();
         }
 
@@ -58,7 +48,7 @@ public class MainActivity extends BridgeActivity {
             // 走 https 的服务器时不让 WebView 拦下来
             s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
             if (isFrame()) {
-                // WebView 自己的底也刷深色，页面加载前闪一下也不会是白的
+                // 页面加载前闪一下也不会是白的
                 webView.setBackgroundColor(0xFF16120F);
             }
         }
@@ -81,27 +71,25 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void applyImmersive() {
-        // 任何来源的 inset padding 都清掉，相框不留空白
-        getWindow().getDecorView().setPadding(0, 0, 0, 0);
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Android 11+：targetSdk 35 起旧 flag 已经失效，必须用 InsetsController
+            // Android 11+：新的 InsetsController（旧 flag 在新系统上会被忽略）
             WindowInsetsController c = getWindow().getInsetsController();
             if (c != null) {
                 c.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
                 c.setSystemBarsBehavior(
                         WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
             }
-        } else {
-            View decor = getWindow().getDecorView();
-            decor.setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                            | View.SYSTEM_UI_FLAG_FULLSCREEN
-                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         }
+
+        // 老系统兜底（放在新 API 后面，避免互相打架）
+        View decor = getWindow().getDecorView();
+        decor.setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             WindowManager.LayoutParams lp = getWindow().getAttributes();

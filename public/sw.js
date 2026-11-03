@@ -1,49 +1,35 @@
 /**
- * 只缓存"外壳"（HTML/JS/CSS/图标），让相框断网也能打开界面。
- * 照片和视频不做缓存——体积太大，而且相框本来就该显示出最新的。
+ * 自毁版 Service Worker。
+ *
+ * 之前它把 /index.html 缓存在设备上（cache-first）。App 升级后，
+ * 缓存的 index.html 还指着旧的文件名（index-XXXX.js），那个文件已经不在新包里，
+ * 请求 404 —— 页面就是一片白。
+ *
+ * 原生 App 根本不需要 SW（页面就在安装包里，断网也能开），
+ * 所以这一版只做一件事：删光缓存、注销自己、把打开的页面刷一次。
  */
-const CACHE = 'aiframe-shell-v2'
-const SHELL = ['/', '/frame', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png']
-
-self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches
-      .open(CACHE)
-      .then((c) => c.addAll(SHELL).catch(() => {}))
-      .then(() => self.skipWaiting())
-  )
+self.addEventListener('install', () => {
+  self.skipWaiting()
 })
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches
-      .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
+    (async () => {
+      try {
+        const keys = await caches.keys()
+        await Promise.all(keys.map((k) => caches.delete(k)))
+      } catch {}
+      try {
+        await self.registration.unregister()
+      } catch {}
+      // 把当前打开的白屏页面重新加载一次，立刻拿到包里最新的页面
+      try {
+        const list = await self.clients.matchAll({ type: 'window' })
+        for (const c of list) c.navigate(c.url)
+      } catch {}
+    })()
   )
 })
 
-self.addEventListener('fetch', (e) => {
-  const url = new URL(e.request.url)
-  if (e.request.method !== 'GET') return
-  if (url.origin !== location.origin) return
-
-  // 接口、上传的文件、视频流一律走网络
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/uploads/')) return
-
-  // 外壳：先给缓存，后台再更新，这样打开是秒开的
-  e.respondWith(
-    caches.match(e.request).then((hit) => {
-      const net = fetch(e.request)
-        .then((res) => {
-          if (res && res.status === 200) {
-            const copy = res.clone()
-            caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {})
-          }
-          return res
-        })
-        .catch(() => hit)
-      return hit || net
-    })
-  )
-})
+// 自毁期间不接管任何请求，全部走网络
+self.addEventListener('fetch', () => {})

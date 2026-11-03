@@ -115,11 +115,11 @@ for (const role of ['frame', 'family']) {
 
 const OUTPUTS = [
   {
-    dest: '相框-平板-v1.4.apk',
+    dest: '相框-平板-v1.5.apk',
     src: path.join('android', 'app', 'build', 'outputs', 'apk', 'frame', 'release', 'app-frame-release.apk'),
   },
   {
-    dest: '子女端-手机-v1.4.apk',
+    dest: '子女端-手机-v1.5.apk',
     src: path.join('android', 'app', 'build', 'outputs', 'apk', 'family', 'release', 'app-family-release.apk'),
   },
 ]
