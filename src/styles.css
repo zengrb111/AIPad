@@ -52,8 +52,12 @@ button {
   overflow: hidden;
   background: #16120f;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   cursor: pointer;
-  touch-action: manipulation;
+  /* none 而不是 manipulation：manipulation 仍允许浏览器接管横滑，
+     手指一划就发 pointercancel，滑动翻页会彻底失效 */
+  touch-action: none;
 }
 
 .frame-slide {
@@ -72,9 +76,27 @@ button {
 .frame-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  /* 先完整显示整张照片，放大交给 transform；cover 会永久裁掉，看不到全图 */
+  object-fit: contain;
   display: block;
-  animation: kenburns 24s ease-out forwards;
+}
+
+/* 照片：从完整显示开始，缓缓推近到铺满屏幕 */
+.frame-img.fit {
+  position: relative;
+  z-index: 1;
+  transform-origin: center center;
+  will-change: transform;
+  animation: pushin 15s ease-in-out forwards;
+}
+
+@keyframes pushin {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(var(--zoom, 1.15));
+  }
 }
 
 /* 竖屏视频放进横屏相框：完整显示，两侧用模糊大图垫，不留黑边 */
@@ -92,15 +114,6 @@ button {
   z-index: 1;
   object-fit: contain;
   animation: none;
-}
-
-@keyframes kenburns {
-  from {
-    transform: scale(1.02);
-  }
-  to {
-    transform: scale(1.1);
-  }
 }
 
 .frame-veil {

@@ -187,49 +187,65 @@ export async function narratePhoto(photo) {
   const base = path.basename(srcName || photo.file, path.extname(srcName || photo.file))
   const audioName = `${base}_say.mp3`
 
-  if (!aiEnabled) {
-    return { status: 'fallback', text: fallbackText(photo.caption, photo.from), audio: null }
-  }
-  if (!srcName) {
-    return { status: 'fallback', text: fallbackText(photo.caption, photo.from), audio: null }
-  }
-
-  const filePath = path.join(UPLOAD_DIR, srcName)
-  if (!fs.existsSync(filePath)) {
-    return { status: 'error', text: '', audio: null, error: '找不到照片文件' }
-  }
-
-  let text
+  let text = ''
   let mode = 'vision'
-  try {
-    text = await callVision(filePath, photo.caption, photo.from)
+  let status = 'done'
+  let note
 
-    // 纯文本模型会直接拒绝看图（"我无法查看这张图片"），这时退回只用文字
-    if (looksLikeRefusal(text)) {
-      if (!photo.caption) {
-        return {
-          status: 'fallback',
-          mode: 'text',
-          text: fallbackText(photo.caption, photo.from),
-          audio: null,
-          note: '当前模型看不了图片，子女也没留话',
-        }
-      }
-      text = await callTextOnly(photo.caption, photo.from)
-      mode = 'text'
+  if (!aiEnabled) {
+    text = fallbackText(photo.caption, photo.from)
+    mode = 'fallback'
+    status = 'fallback'
+    note = '未配置视觉模型，只念子女留的话'
+  } else if (!srcName) {
+    text = fallbackText(photo.caption, photo.from)
+    mode = 'fallback'
+    status = 'fallback'
+    note = '没有可用的画面'
+  } else {
+    const filePath = path.join(UPLOAD_DIR, srcName)
+    if (!fs.existsSync(filePath)) {
+      return { status: 'error', text: '', audio: null, error: '找不到照片文件' }
     }
-  } catch (e) {
-    console.warn('[ai] 生成解说失败：', e.message)
-    return { status: 'error', text: '', audio: null, error: e.message }
+
+    try {
+      text = await callVision(filePath, photo.caption, photo.from)
+
+      // 纯文本模型会直接拒绝看图（"我无法查看这张图片"），这时退回只用文字
+      if (looksLikeRefusal(text)) {
+        if (!photo.caption) {
+          text = fallbackText(photo.caption, photo.from)
+          return await withVoice({ status: 'fallback', mode: 'text', text, note: '当前模型看不了图片，子女也没留话' }, audioName)
+        }
+        text = await callTextOnly(photo.caption, photo.from)
+        mode = 'text'
+      }
+    } catch (e) {
+      console.warn('[ai] 生成解说失败：', e.message)
+      return { status: 'error', text: '', audio: null, error: e.message }
+    }
   }
 
-  let audio = null
-  try {
-    audio = await localTTS(text, audioName)
-  } catch (e) {
-    // 合成失败不影响文字，相框端会退回浏览器朗读
-    console.warn('[ai] 本地合成失败：', e.message)
-  }
+  return await withVoice({ status, mode, text, note }, audioName)
+}
 
-  return { status: 'done', mode, text, audio }
+/**
+ * 给文案配上语音。
+ *
+ * 语音只在这台服务器上合成一次，相框端拿到的是 mp3，
+ * 永远不会自己再合成一遍——设备音色不统一，而且老人分不清哪个是"家里人说的话"。
+ * 合成失败重试一次；两次都失败才返回 null（相框只显示字幕，不出声）。
+ */
+async function withVoice(result, audioName) {
+  if (!result.text) return { ...result, audio: null }
+
+  for (let i = 0; i < 2; i++) {
+    try {
+      const audio = await localTTS(result.text, audioName)
+      return { ...result, audio }
+    } catch (e) {
+      console.warn(`[ai] 本地合成失败（第 ${i + 1} 次）：`, e.message)
+    }
+  }
+  return { ...result, audio: null }
 }

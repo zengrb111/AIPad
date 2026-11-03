@@ -7,6 +7,7 @@ import os from 'node:os'
 import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { store, UPLOAD_DIR, ROOT } from './store.js'
+import { addClient, broadcast } from './events.js'
 import { processImage, processVideo, processAudio, hasFfmpeg } from './media.js'
 import { narratePhoto, aiEnabled, ttsEnabled, fallbackText as photoFallback } from './ai.js'
 import { transcribeVideo, asrEnabled, warmUp } from './asr.js'
@@ -87,6 +88,7 @@ app.post('/api/photos', upload.single('file'), async (req, res) => {
       transcript: isVideo ? { status: 'pending', text: '', chunks: [] } : undefined,
     }
     store.addPhoto(photo)
+    broadcast('photo', { id: photo.id }, 'parent')
 
     // 视频再跑一遍语音识别，出字幕。慢（要解音频+过模型），放后台。
     if (isVideo && asrEnabled) {
@@ -103,12 +105,16 @@ app.post('/api/photos', upload.single('file'), async (req, res) => {
     // 解说在后台生成，不挡住上传响应：模型看一张图要几秒
     if (aiEnabled) {
       narratePhoto(photo)
-        .then((r) => store.updatePhoto(photo.id, { narration: r }))
+        .then((r) => {
+          store.updatePhoto(photo.id, { narration: r })
+          broadcast('narration', { id: photo.id, audio: r.audio }, 'parent')
+        })
         .catch((e) => {
           console.error('[ai]', e)
           store.updatePhoto(photo.id, {
             narration: { status: 'error', text: '', audio: null, error: e.message },
           })
+          broadcast('narration', { id: photo.id, audio: null }, 'parent')
         })
     }
 
@@ -131,6 +137,7 @@ app.post('/api/photos/:id/narrate', async (req, res) => {
   try {
     const r = await narratePhoto(photo)
     store.updatePhoto(photo.id, { narration: r })
+    broadcast('narration', { id: photo.id, audio: r.audio }, 'parent')
     res.json({ ok: true, narration: r })
   } catch (e) {
     const r = { status: 'error', text: '', audio: null, error: e.message }
@@ -145,6 +152,7 @@ app.delete('/api/photos/:id', (req, res) => {
     try {
       fs.unlinkSync(path.join(UPLOAD_DIR, p.file))
     } catch {}
+    broadcast('photo-deleted', { id: p.id }, 'parent')
   }
   res.json({ ok: true })
 })
@@ -168,6 +176,12 @@ app.post('/api/comments', upload.single('file'), async (req, res) => {
       heard: false,
     }
     store.addComment(comment)
+    broadcast('voice', {
+      id: comment.id,
+      audio: comment.audio,
+      photoId: comment.photoId,
+      duration: comment.duration,
+    }, from === 'child' ? 'parent' : 'child')
     res.json({ ok: true, comment })
   } catch (e) {
     console.error(e)
@@ -198,6 +212,20 @@ app.post('/api/photos/:id/transcribe', async (req, res) => {
   }
 })
 
+/* ---------------- 推送（相框端长连接） ---------------- */
+
+/**
+ * 相框端挂在这里，服务端一有动静就推过去。
+ * 解说要等模型几秒才出来，靠轮询会慢半拍；推送能做到"生成完就播"。
+ */
+app.get('/api/events', (req, res) => {
+  const role = req.query.role === 'child' ? 'child' : 'parent'
+  const cleanup = addClient(res, role)
+  req.on('close', cleanup)
+  req.on('error', cleanup)
+  res.on('close', cleanup)
+})
+
 /* ---------------- 同步（相框轮询用） ---------------- */
 
 app.get('/api/sync', (req, res) => {
@@ -208,6 +236,7 @@ app.get('/api/sync', (req, res) => {
 
   res.json({
     serverTime: Date.now(),
+    rev: store.rev,
     photoCount: store.photos.length,
     latestPhotoAt: store.photos[0]?.createdAt || 0,
     newPhotos: store.photos.filter((p) => p.createdAt > since).length,

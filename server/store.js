@@ -22,6 +22,11 @@ function read() {
 
 let db = read()
 
+// 数据版本号：任何改动都 +1。
+// 相框端靠它判断"有没有新东西"，比对比照片数量可靠——
+// 解说生成完成时照片数量没变，但内容变了。
+let rev = 1
+
 // 原子写：先写临时文件再 rename，避免半截文件导致数据丢失
 let writing = false
 let dirty = false
@@ -54,12 +59,17 @@ export const store = {
     return db.comments
   },
 
+  get rev() {
+    return rev
+  },
+
   save() {
     flush()
   },
 
   addPhoto(p) {
     db.photos.unshift(p)
+    rev++
     flush()
     return p
   },
@@ -72,6 +82,7 @@ export const store = {
     const p = db.photos.find((x) => x.id === id)
     if (!p) return null
     Object.assign(p, patch)
+    rev++
     flush()
     return p
   },
@@ -81,12 +92,14 @@ export const store = {
     if (idx === -1) return null
     const [p] = db.photos.splice(idx, 1)
     db.comments = db.comments.filter((c) => c.photoId !== id)
+    rev++
     flush()
     return p
   },
 
   addComment(c) {
     db.comments.push(c)
+    rev++
     flush()
     return c
   },
@@ -95,6 +108,7 @@ export const store = {
     const c = db.comments.find((x) => x.id === id)
     if (c) {
       c.heard = true
+      rev++
       flush()
     }
     return c

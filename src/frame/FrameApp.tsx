@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, url, fmtClock, fmtDur, type Comment, type Narration, type Photo } from '../lib/api'
-import { isNativeApp } from '../lib/server'
+import { abs, isNativeApp } from '../lib/server'
 import { useRecorder } from '../lib/recorder'
 
 const SLIDE_MS = 18000
@@ -20,7 +20,6 @@ export default function FrameApp() {
   const [narratingId, setNarratingId] = useState<string | null>(null)
   const [subtitle, setSubtitle] = useState('')
   const [sending, setSending] = useState(false)
-  const [now, setNow] = useState(new Date())
   // 装成 App 之后，原生层已经放开了自动播放，不需要用户先点一下解锁
   const [unlocked, setUnlocked] = useState(() => isNativeApp())
   const [playingVideo, setPlayingVideo] = useState<string | null>(null)
@@ -40,6 +39,8 @@ export default function FrameApp() {
   const subtitleTimer = useRef<number | undefined>(undefined)
   const pointerStart = useRef<{ x: number; y: number } | null>(null)
   const swipedRef = useRef(false)
+  /** 服务端数据版本号，用来判断要不要重新拉一遍（解说生成完时照片数量不变） */
+  const revRef = useRef(0)
 
   photosRef.current = photos
   recOpenRef.current = recOpen
@@ -96,13 +97,6 @@ export default function FrameApp() {
     }, SLIDE_MS)
     return () => clearInterval(t)
   }, [photos.length, recOpen, slideKey, switchTo])
-
-  /* ---------- 时钟 ---------- */
-
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 20000)
-    return () => clearInterval(t)
-  }, [])
 
   /* ---------- 屏幕常亮 ---------- */
 
@@ -206,27 +200,14 @@ export default function FrameApp() {
       return
     }
 
-    // 没有合成好的语音文件，退回浏览器朗读。没有中文语音包就只显示字幕，不出声。
-    try {
-      const voices = window.speechSynthesis?.getVoices?.() || []
-      const zh = voices.find((v) => v.lang?.toLowerCase().startsWith('zh'))
-      if (!zh) {
-        subtitleTimer.current = window.setTimeout(() => {
-          setNarratingId(null)
-          setSubtitle('')
-        }, 9000)
-        return
-      }
-      const u = new SpeechSynthesisUtterance(n.text)
-      u.lang = 'zh-CN'
-      u.voice = zh
-      u.rate = 0.92
-      u.onend = finish
-      u.onerror = finish
-      window.speechSynthesis.speak(u)
-    } catch {
-      finish()
-    }
+    // 语音一律用子女端（服务端）合成好的 mp3，相框不再自己合成一次。
+    // 设备音色不统一是一个原因，更实际的是：这块平板跑 TTS 会卡，
+    // 而且老人会把"机器在念"和"孩子留的话"混在一起。
+    // 没有音频（合成失败，极少见）就安静显示字幕。
+    subtitleTimer.current = window.setTimeout(() => {
+      setNarratingId(null)
+      setSubtitle('')
+    }, 9000)
   }, [])
 
   useEffect(() => {
@@ -268,7 +249,12 @@ export default function FrameApp() {
       try {
         const s = await api.sync('parent', 0)
         if (!alive) return
-        if (s.photoCount !== photosRef.current.length) refresh()
+        // 用版本号判断，而不是照片数量：
+        // 解说生成完时照片数量没变，但内容变了，必须重新拉一次
+        if (s.rev !== revRef.current) {
+          revRef.current = s.rev
+          refresh()
+        }
         if (!recOpenRef.current && s.pendingAudio?.length) {
           const next = (s.pendingAudio as SyncAudio[]).find((x) => !handled.current.has(x.id))
           if (next) playVoice(next)
@@ -285,6 +271,61 @@ export default function FrameApp() {
       clearTimeout(timer)
     }
   }, [playVoice, refresh])
+
+  /* ---------- 实时推送：解说一生成完就推过来 ---------- */
+
+  useEffect(() => {
+    if (typeof EventSource === 'undefined') return
+    let es: EventSource | null = null
+    let closed = false
+
+    try {
+      es = new EventSource(abs('/api/events?role=parent'))
+    } catch {
+      return
+    }
+
+    es.onmessage = (e) => {
+      let m: { type?: string; id?: string; audio?: string; photoId?: string | null; duration?: number }
+      try {
+        m = JSON.parse(e.data)
+      } catch {
+        return
+      }
+      if (m.type === 'photo') {
+        // 新照片进来时画面会立刻切过去（新照片排在最前）。
+        // 这时候如果还在念上一张，声画就对不上了——先停下，等新的解说推过来。
+        stopAll()
+        refresh()
+        return
+      }
+      if (m.type === 'photo-deleted') {
+        refresh()
+        return
+      }
+      if (m.type === 'narration') {
+        // 文案和 mp3 都已经在服务端生成好了，这里只管拉下来播
+        refresh()
+        return
+      }
+      if (m.type === 'voice' && m.audio && m.id && !recOpenRef.current) {
+        playVoice({
+          id: m.id,
+          audio: m.audio,
+          photoId: m.photoId ?? null,
+          duration: m.duration ?? 0,
+        })
+      }
+    }
+
+    // 断线由 EventSource 自己重连；这里不 close，否则会把自动重连搞坏
+    return () => {
+      closed = true
+      es?.close()
+      es = null
+      void closed
+    }
+  }, [playVoice, refresh, stopAll])
 
   /* ---------- 录音 ---------- */
 
@@ -362,24 +403,61 @@ export default function FrameApp() {
     openRec()
   }
 
-  // 左右滑动翻页。用 pointer 事件，手指和鼠标都能用
+  // 左右滑动翻页
+  //
+  // 踩过的坑：原来只用 pointerdown/pointerup，用鼠标测能过，
+  // 真机触屏上没反应——.frame 的 touch-action 允许浏览器接管横滑，
+  // 手指一动就触发 pointercancel，pointerup 永远不来。
+  // 现在：触屏走 touch 事件，鼠标走 pointer，两边都能用。
+  const handleSwipe = (dx: number, dy: number) => {
+    if (Math.abs(dx) < 40) return
+    // 横向位移要明显大于纵向，避免把上下划当成翻页
+    if (Math.abs(dx) < Math.abs(dy) * 1.1) return
+    swipedRef.current = true
+    stopAll()
+    goTo(dx < 0 ? 1 : -1)
+  }
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0]
+    if (!t) return
+    pointerStart.current = { x: t.clientX, y: t.clientY }
+    swipedRef.current = false
+  }
+
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const s = pointerStart.current
+    pointerStart.current = null
+    if (!s || recOpen) return
+    if (panelOpen) {
+      setPanelOpen(false)
+      return
+    }
+    const t = e.changedTouches[0]
+    if (!t) return
+    handleSwipe(t.clientX - s.x, t.clientY - s.y)
+  }
+
   const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'mouse') return
     pointerStart.current = { x: e.clientX, y: e.clientY }
     swipedRef.current = false
   }
 
   const onPointerUp = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'mouse') return
     const s = pointerStart.current
     pointerStart.current = null
-    if (!s || recOpen || panelOpen) return
-    const dx = e.clientX - s.x
-    const dy = e.clientY - s.y
-    // 横向位移要明显大于纵向，避免把上下滑当成翻页
-    if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.2) {
-      swipedRef.current = true
-      stopAll()
-      goTo(dx < 0 ? 1 : -1)
+    if (!s || recOpen) return
+    if (panelOpen) {
+      setPanelOpen(false)
+      return
     }
+    handleSwipe(e.clientX - s.x, e.clientY - s.y)
+  }
+
+  const onPointerCancel = () => {
+    pointerStart.current = null
   }
 
   if (!loaded) return <div className="loading">正在取照片…</div>
@@ -402,8 +480,11 @@ export default function FrameApp() {
     <div
       className="frame"
       onClick={onFrameClick}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
     >
       {photos.length === 0 ? (
         <div className="frame-empty">
@@ -463,21 +544,6 @@ export default function FrameApp() {
       )}
 
       <div className="frame-veil" />
-
-      <div
-        style={{
-          position: 'absolute',
-          top: 28,
-          left: 34,
-          color: 'rgba(255,255,255,.62)',
-          fontSize: 20,
-          fontVariantNumeric: 'tabular-nums',
-          letterSpacing: '.04em',
-          textShadow: '0 1px 10px rgba(0,0,0,.3)',
-        }}
-      >
-        {now.getHours().toString().padStart(2, '0')}:{now.getMinutes().toString().padStart(2, '0')}
-      </div>
 
       {/* 右上角气泡：点开看这张照片的讲解和家人留言 */}
       {photos.length > 0 && !recOpen && !playingVideo && (
@@ -670,19 +736,55 @@ export default function FrameApp() {
 }
 
 /** 照片铺满；视频封面保留完整画面，两侧用同一张图模糊垫底 */
+/**
+ * 一张照片的呈现：
+ *   先把整张照片完整显示（不裁），再缓缓推近，直到刚好铺满屏幕，然后切下一张。
+ *   视频不一样——先给封面，点开才播，不推近。
+ */
 function MediaLayer({ p, top }: { p: Photo; top?: boolean }) {
   const isVid = p.kind === 'video'
   const src = isVid ? (p.cover ? url(p.cover) : null) : url(p.file)
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [zoom, setZoom] = useState(1)
+
+  // 铺满屏幕要放大多少倍 = 铺满比例 / 完整显示比例。
+  // 每张照片长宽比不同，只能等图片加载完量出来再算。
+  const measure = useCallback((img: HTMLImageElement) => {
+    const box = boxRef.current?.getBoundingClientRect()
+    if (!box || !img.naturalWidth || !img.naturalHeight) return
+    const cover = Math.max(box.width / img.naturalWidth, box.height / img.naturalHeight)
+    const contain = Math.min(box.width / img.naturalWidth, box.height / img.naturalHeight)
+    // 多给 1%：算出来的刚好铺满时，边缘会漏一条亚像素的缝
+    const k = (cover / contain) * 1.03
+    // 上限只是防极端长图（手机截屏那种），正常竖版照片也能真的铺满
+    setZoom(Math.min(Math.max(k, 1), 4))
+  }, [])
+
   return (
-    <div className="frame-slide show" style={top ? { zIndex: 2 } : undefined}>
+    <div className="frame-slide show" ref={boxRef} style={top ? { zIndex: 2 } : undefined}>
       {src ? (
         isVid ? (
           <>
             <div className="frame-blur" style={{ backgroundImage: `url(${src})` }} />
-            <img className="frame-img contain" src={src} alt="" />
+            <img className="frame-img contain" src={src} alt="" draggable={false} />
           </>
         ) : (
-          <img className="frame-img" src={src} alt="" />
+          <>
+            {/* 完整显示时上下/两侧会有空白，用同一张图模糊垫底，比黑边好看 */}
+            <div className="frame-blur" style={{ backgroundImage: `url(${src})` }} />
+            <img
+              key={p.id}
+              className="frame-img fit"
+              src={src}
+              alt=""
+              draggable={false}
+              ref={(el) => {
+                if (el?.complete) measure(el)
+              }}
+              style={{ '--zoom': zoom } as React.CSSProperties}
+              onLoad={(e) => measure(e.currentTarget)}
+            />
+          </>
         )
       ) : (
         <div className="frame-img" style={{ background: '#1d1814' }} />
