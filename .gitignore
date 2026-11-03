@@ -1,0 +1,31 @@
+node_modules/
+dist/
+data/
+certs/
+tmp/
+*.log
+.DS_Store
+Thumbs.db
+
+# 构建环境与产物
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+tools/
+release/
+resources/
+
+# 签名文件，绝不能进版本库（但必须自己备份两处）
+*.jks
+*.keystore
+keystore.properties
+
+# Capacitor 生成物（由 cap copy 产出，不进版本库）
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/capacitor-cordova-android-plugins/build/
+
+# 个人工作日志，不进代码仓库
+.workbuddy/

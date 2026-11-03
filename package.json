@@ -1,0 +1,40 @@
+{
+  "name": "aiframe",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "AI 相框 Demo — 照片流 + 双向语音",
+  "scripts": {
+    "dev": "concurrently -n server,web -c cyan,magenta \"node server/index.js\" \"vite\"",
+    "dev:server": "node server/index.js",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "npm run build && node server/index.js",
+    "cert": "node scripts/gen-cert.mjs",
+    "seed": "node scripts/seed.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "apk": "node scripts/build-apk.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@huggingface/transformers": "^4.3.2",
+    "express": "^4.21.2",
+    "msedge-tts": "^2.1.1",
+    "multer": "^1.4.5-lts.1",
+    "opencc-js": "^1.4.2"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}

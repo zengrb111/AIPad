@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- app_name 由 build.gradle 里的 productFlavors 提供，两个包不一样 -->
+    <string name="title_activity_main">相框</string>
+    <string name="package_name">cafe.aimemory.frame</string>
+    <string name="custom_url_scheme">cafe.aimemory.frame</string>
+</resources>
