@@ -41,10 +41,10 @@ public class MainActivity extends BridgeActivity {
 
             // Capacitor 的 SystemBars 默认会按系统栏高度给 decorView 加 padding。
             // 状态栏隐藏后那一条空白还在，窗口底色是白的——就是平板上那条白带。
-            // 直接顶掉它的监听器，不接收任何 inset padding（只对相框包生效）。
-            ViewCompat.setOnApplyWindowInsetsListener(
-                    getWindow().getDecorView(),
-                    (v, insets) -> insets);
+            // 光换监听器不够：它已经加过一次 padding，必须显式清零。
+            View decor = getWindow().getDecorView();
+            ViewCompat.setOnApplyWindowInsetsListener(decor, (v, insets) -> insets);
+            decor.setPadding(0, 0, 0, 0);
 
             applyImmersive();
         }
@@ -81,6 +81,9 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void applyImmersive() {
+        // 任何来源的 inset padding 都清掉，相框不留空白
+        getWindow().getDecorView().setPadding(0, 0, 0, 0);
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             // Android 11+：targetSdk 35 起旧 flag 已经失效，必须用 InsetsController
             WindowInsetsController c = getWindow().getInsetsController();

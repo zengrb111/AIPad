@@ -18,5 +18,12 @@
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <!--
+          关键：启动图结束后要把主题交回 NoActionBar。
+          少了这一行，窗口会一直挂着启动主题那张（原来是白底）图，
+          状态栏那条留白就露成白带。
+        -->
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+        <item name="windowSplashScreenBackground">#FF16120F</item>
     </style>
 </resources>
