@@ -13,7 +13,8 @@
     "cert": "node scripts/gen-cert.mjs",
     "seed": "node scripts/seed.mjs",
     "icons": "node scripts/make-icons.mjs",
-    "apk": "node scripts/build-apk.mjs"
+    "apk": "node scripts/build-apk.mjs",
+    "release": "node scripts/upload-release.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.0",
